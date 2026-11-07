@@ -19,7 +19,8 @@ Layanan ini dirancang khusus untuk memvalidasi keaktifan mahasiswa, mengambil id
 ## Menjalankan Layanan
 
 ```bash
-cd project/auth-pddikti
+git clone https://github.com/akbarhann/auth-pddikti.git
+cd auth-pddikti
 go mod tidy
 go run main.go
 ```
