@@ -167,3 +167,74 @@ func TestVerifyNIM_DetailNIMMismatch(t *testing.T) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
+
+func TestGetDetail_InvalidAndEmpty(t *testing.T) {
+	f := &fakeUpstream{details: map[string]StudentDetail{"empty": {}}}
+	c := newTestClient(t, f)
+
+	if _, err := c.GetDetail("bogus"); !errors.Is(err, ErrInvalidID) {
+		t.Fatalf("bogus: want ErrInvalidID, got %v", err)
+	}
+	if _, err := c.GetDetail("  "); !errors.Is(err, ErrInvalidID) {
+		t.Fatalf("blank: want ErrInvalidID, got %v", err)
+	}
+	if _, err := c.GetDetail("empty"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("empty: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestSearch_EmptyResultIsNotError(t *testing.T) {
+	res, err := newTestClient(t, &fakeUpstream{}).Search("tidakada")
+	if err != nil || res == nil || len(res) != 0 {
+		t.Fatalf("want empty non-nil slice, got %v %v", res, err)
+	}
+}
+
+func TestSearch_EscapesKeywordAndSendsHeaders(t *testing.T) {
+	f := &fakeUpstream{}
+	if _, err := newTestClient(t, f).Search("  budi/santoso ?x  "); err != nil {
+		t.Fatal(err)
+	}
+	if want := "/pencarian/mhs/budi%20santoso%20%3Fx"; f.lastPath != want {
+		t.Fatalf("path = %s, want %s", f.lastPath, want)
+	}
+	for k, want := range map[string]string{"User-Agent": UserAgent, "Origin": Origin, "Referer": Referer} {
+		if got := f.lastHeaders.Get(k); got != want {
+			t.Errorf("header %s = %q, want %q", k, got, want)
+		}
+	}
+}
+
+func TestUpstreamErrors(t *testing.T) {
+	cases := []struct {
+		name   string
+		f      *fakeUpstream
+		target error
+	}{
+		{"403", &fakeUpstream{status: http.StatusForbidden}, ErrBlocked},
+		{"429", &fakeUpstream{status: http.StatusTooManyRequests}, ErrRateLimited},
+		{"500", &fakeUpstream{status: http.StatusInternalServerError}, ErrUpstream},
+		{"bad json", &fakeUpstream{rawBody: "<html>"}, ErrUpstream},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestClient(t, tc.f)
+			if _, err := c.Search("x"); !errors.Is(err, tc.target) {
+				t.Fatalf("Search: want %v, got %v", tc.target, err)
+			}
+			if _, err := c.VerifyNIM("x", ""); !errors.Is(err, tc.target) {
+				t.Fatalf("VerifyNIM: want %v, got %v", tc.target, err)
+			}
+		})
+	}
+}
+
+func TestTimeout(t *testing.T) {
+	f := &fakeUpstream{delay: 200 * time.Millisecond}
+	srv := httptest.NewServer(http.HandlerFunc(f.handler))
+	t.Cleanup(srv.Close)
+	c := NewClient(WithBaseURL(srv.URL), WithTimeout(50*time.Millisecond))
+	if _, err := c.Search("x"); !errors.Is(err, ErrTimeout) {
+		t.Fatalf("want ErrTimeout, got %v", err)
+	}
+}
