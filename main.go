@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -83,16 +84,24 @@ func main() {
 	})
 
 	// 3. Instant Verification & Auto-fill by NIM (All-In-One Bridge)
-	// GET /api/verify/:nim
-	// POST /api/verify {"nim": "23010000001"}
-	handleVerify := func(c *gin.Context, nim string) {
+	// GET /api/verify/:nim?kampus=...
+	// POST /api/verify {"nim": "23010000001", "kampus": "..."}
+	handleVerify := func(c *gin.Context, nim, campus string) {
 		nim = strings.TrimSpace(nim)
 		if nim == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "NIM is required"})
 			return
 		}
 
-		detail, err := client.VerifyNIM(nim)
+		detail, err := client.VerifyNIM(nim, campus)
+		var amb *pddikti.AmbiguousError
+		if errors.As(err, &amb) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":      "NIM terdaftar di lebih dari satu perguruan tinggi; sertakan parameter 'kampus'",
+				"candidates": amb.Candidates,
+			})
+			return
+		}
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
@@ -120,18 +129,19 @@ func main() {
 	}
 
 	router.GET("/api/verify/:nim", func(c *gin.Context) {
-		handleVerify(c, c.Param("nim"))
+		handleVerify(c, c.Param("nim"), c.Query("kampus"))
 	})
 
 	router.POST("/api/verify", func(c *gin.Context) {
 		var req struct {
-			NIM string `json:"nim" binding:"required"`
+			NIM    string `json:"nim" binding:"required"`
+			Kampus string `json:"kampus"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "JSON body with field 'nim' is required"})
 			return
 		}
-		handleVerify(c, req.NIM)
+		handleVerify(c, req.NIM, req.Kampus)
 	})
 
 	log.Printf("[+] auth-pddikti service running on http://localhost:%s", port)

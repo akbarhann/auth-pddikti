@@ -165,29 +165,63 @@ func (c *Client) GetDetail(id string) (*StudentDetail, error) {
 	return &detailResp.Data, nil
 }
 
-// VerifyNIM searches by exact NIM and immediately pulls full student detail
-func (c *Client) VerifyNIM(nim string) (*StudentDetail, error) {
-	candidates, err := c.Search(nim)
+// VerifyNIM finds the student whose NIM matches nim exactly and returns the
+// full detail. It never falls back to a partial or fuzzy match.
+//
+// NIM is not unique nationwide: when several campuses share the same NIM,
+// campus (nama PT or singkatan, case-insensitive; empty = no filter) is used
+// to narrow it down, otherwise an *AmbiguousError is returned.
+func (c *Client) VerifyNIM(nim, campus string) (*StudentDetail, error) {
+	cleanNIM := strings.TrimSpace(nim)
+	if cleanNIM == "" {
+		return nil, ErrNotFound
+	}
+
+	candidates, err := c.Search(cleanNIM)
 	if err != nil {
 		return nil, err
 	}
 
-	cleanNIM := strings.TrimSpace(nim)
-	var targetID string
+	var matches []StudentSearchResult
 	for _, item := range candidates {
-		if strings.EqualFold(strings.TrimSpace(item.NIM), cleanNIM) {
-			targetID = item.ID
-			break
+		if strings.TrimSpace(item.NIM) == cleanNIM && matchesCampus(item, campus) {
+			matches = append(matches, item)
 		}
 	}
 
-	if targetID == "" {
-		if len(candidates) > 0 {
-			targetID = candidates[0].ID
-		} else {
-			return nil, fmt.Errorf("mahasiswa dengan NIM '%s' tidak ditemukan di PDDIKTI", nim)
+	switch len(matches) {
+	case 0:
+		return nil, ErrNotFound
+	case 1:
+	default:
+		amb := &AmbiguousError{NIM: cleanNIM}
+		for _, m := range matches {
+			amb.Candidates = append(amb.Candidates, Campus{
+				NamaPT:      strings.TrimSpace(m.NamaPT),
+				SingkatanPT: strings.TrimSpace(m.SingkatanPT),
+				NamaProdi:   strings.TrimSpace(m.NamaProdi),
+			})
 		}
+		return nil, amb
 	}
 
-	return c.GetDetail(targetID)
+	detail, err := c.GetDetail(matches[0].ID)
+	if err != nil {
+		return nil, err
+	}
+	// Defence in depth: the detail must belong to the NIM that was asked for.
+	if strings.TrimSpace(detail.NIM) != cleanNIM {
+		return nil, ErrNotFound
+	}
+	return detail, nil
+}
+
+func matchesCampus(item StudentSearchResult, campus string) bool {
+	campus = strings.ToUpper(strings.TrimSpace(campus))
+	if campus == "" {
+		return true
+	}
+	nama := strings.ToUpper(strings.TrimSpace(item.NamaPT))
+	singkatan := strings.ToUpper(strings.TrimSpace(item.SingkatanPT))
+	return (singkatan != "" && singkatan == campus) || strings.Contains(nama, campus)
 }
