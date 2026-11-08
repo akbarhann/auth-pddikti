@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"auth-pddikti/internal/pddikti"
@@ -10,16 +12,52 @@ import (
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8090"
-	}
+	port := env("PORT", "8090")
 
 	client := pddikti.NewClient(pddikti.WithTimeout(10 * time.Second))
-	router := server.NewRouter(client)
+
+	router, err := server.NewRouter(client, server.Config{
+		APIKey:         os.Getenv("API_KEY"),
+		CORSOrigins:    splitList(os.Getenv("CORS_ORIGINS")),
+		RatePerMinute:  envInt("RATE_LIMIT_PER_MINUTE", 30),
+		MinQueryLen:    envInt("SEARCH_MIN_QUERY_LEN", 3),
+		TrustedProxies: splitList(os.Getenv("TRUSTED_PROXIES")),
+	})
+	if err != nil {
+		log.Fatalf("[-] Invalid configuration: %v", err)
+	}
 
 	log.Printf("[+] auth-pddikti service running on http://localhost:%s", port)
 	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("[-] Failed to run server: %v", err)
 	}
+}
+
+func env(key, def string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		log.Fatalf("[-] %s harus bilangan bulat >= 0, dapat %q", key, v)
+	}
+	return n
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

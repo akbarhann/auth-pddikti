@@ -2,15 +2,33 @@
 package server
 
 import (
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
 	"auth-pddikti/internal/pddikti"
 )
+
+// Config controls the API's protection settings. The zero value is valid:
+// no API key, CORS for any origin, no rate limit, no minimum query length.
+type Config struct {
+	// APIKey, when set, must be sent in the X-API-Key header on /api/*.
+	APIKey string
+	// CORSOrigins lists allowed origins. Empty or containing "*" allows any.
+	CORSOrigins []string
+	// RatePerMinute limits /api/* requests per client IP. 0 disables it.
+	RatePerMinute int
+	// MinQueryLen is the minimum length (in characters) of /api/search?q=.
+	MinQueryLen int
+	// TrustedProxies are proxies whose X-Forwarded-For is believed when
+	// resolving the client IP. Empty trusts none.
+	TrustedProxies []string
+}
 
 // Searcher is the subset of *pddikti.Client the API needs.
 type Searcher interface {
@@ -19,10 +37,14 @@ type Searcher interface {
 	VerifyNIM(nim, campus string) (*pddikti.StudentDetail, error)
 }
 
-func NewRouter(client Searcher) *gin.Engine {
+func NewRouter(client Searcher, cfg Config) (*gin.Engine, error) {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
-	r.Use(corsMiddleware())
+	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		return nil, err
+	}
+
+	r.Use(corsMiddleware(cfg.CORSOrigins))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -33,12 +55,22 @@ func NewRouter(client Searcher) *gin.Engine {
 	})
 
 	api := r.Group("/api")
+	if cfg.APIKey != "" {
+		api.Use(apiKeyMiddleware(cfg.APIKey))
+	}
+	if cfg.RatePerMinute > 0 {
+		api.Use(newIPRateLimiter(cfg.RatePerMinute).middleware())
+	}
 
 	// GET /api/search?q=keyword -> candidate list
 	api.GET("/search", func(c *gin.Context) {
 		query := strings.TrimSpace(c.Query("q"))
 		if query == "" {
 			badRequest(c, "Query parameter 'q' is required")
+			return
+		}
+		if utf8.RuneCountInString(query) < cfg.MinQueryLen {
+			badRequest(c, "Query parameter 'q' terlalu pendek")
 			return
 		}
 
@@ -116,7 +148,7 @@ func NewRouter(client Searcher) *gin.Engine {
 		handleVerify(c, req.NIM, req.Kampus)
 	})
 
-	return r
+	return r, nil
 }
 
 func badRequest(c *gin.Context, msg string) {
@@ -153,14 +185,45 @@ func writeError(c *gin.Context, err error) {
 	c.AbortWithStatusJSON(status, gin.H{"status": "error", "code": code, "error": err.Error()})
 }
 
-func corsMiddleware() gin.HandlerFunc {
+func corsMiddleware(origins []string) gin.HandlerFunc {
+	allowAll := len(origins) == 0
+	allowed := make(map[string]bool, len(origins))
+	for _, o := range origins {
+		o = strings.TrimRight(strings.TrimSpace(o), "/")
+		if o == "*" {
+			allowAll = true
+		}
+		allowed[o] = true
+	}
+
 	return func(c *gin.Context) {
 		h := c.Writer.Header()
-		h.Set("Access-Control-Allow-Origin", "*")
+		if allowAll {
+			h.Set("Access-Control-Allow-Origin", "*")
+		} else {
+			h.Add("Vary", "Origin")
+			if origin := c.GetHeader("Origin"); allowed[origin] {
+				h.Set("Access-Control-Allow-Origin", origin)
+			}
+		}
 		h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		h.Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		h.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
+}
+
+func apiKeyMiddleware(key string) gin.HandlerFunc {
+	want := []byte(key)
+	return func(c *gin.Context) {
+		got := []byte(c.GetHeader("X-API-Key"))
+		if subtle.ConstantTimeCompare(got, want) != 1 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"status": "error", "code": "unauthorized", "error": "header X-API-Key tidak valid",
+			})
 			return
 		}
 		c.Next()
