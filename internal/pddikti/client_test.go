@@ -84,7 +84,7 @@ func TestVerifyNIM_ExactMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.NIM != "23010000001" {
+	if got.NIM != "23010000001" || !got.IsActive() {
 		t.Fatalf("got %+v", got)
 	}
 }
@@ -236,5 +236,19 @@ func TestTimeout(t *testing.T) {
 	c := NewClient(WithBaseURL(srv.URL), WithTimeout(50*time.Millisecond))
 	if _, err := c.Search("x"); !errors.Is(err, ErrTimeout) {
 		t.Fatalf("want ErrTimeout, got %v", err)
+	}
+}
+
+func TestIsActive(t *testing.T) {
+	for status, want := range map[string]bool{
+		"Aktif-2026/2027 Ganjil":      true,
+		" aktif":                      true,
+		"Dikeluarkan-2024/2025 Genap": false,
+		"Lulus":                       false,
+		"":                            false,
+	} {
+		if got := (&StudentDetail{StatusSaatIni: status}).IsActive(); got != want {
+			t.Errorf("IsActive(%q) = %v, want %v", status, got, want)
+		}
 	}
 }

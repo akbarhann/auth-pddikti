@@ -85,6 +85,11 @@ type StudentDetail struct {
 	TanggalMasuk  string `json:"tanggal_masuk"`
 }
 
+// IsActive reports whether the current academic status is "Aktif-...".
+func (d *StudentDetail) IsActive() bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(d.StatusSaatIni)), "aktif")
+}
+
 type DetailResponse struct {
 	Status  string        `json:"status"`
 	Message string        `json:"message,omitempty"`

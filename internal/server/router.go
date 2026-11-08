@@ -79,11 +79,13 @@ func NewRouter(client Searcher) *gin.Engine {
 			return
 		}
 
-		isActive := strings.HasPrefix(strings.ToLower(strings.TrimSpace(detail.StatusSaatIni)), "aktif")
+		isActive := detail.IsActive()
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "success",
 			"verified":  true,
 			"is_active": isActive,
+			// eligible is what callers should gate access on.
+			"eligible": isActive,
 			"student": gin.H{
 				"nim":             detail.NIM,
 				"nama":            detail.Nama,

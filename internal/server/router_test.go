@@ -82,7 +82,7 @@ func TestVerify_Success(t *testing.T) {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
 	}
 	m := decode(t, w)
-	if m["verified"] != true || m["is_active"] != true {
+	if m["verified"] != true || m["is_active"] != true || m["eligible"] != true {
 		t.Fatalf("unexpected flags: %v", m)
 	}
 	if kode := m["student"].(map[string]any)["kode_pt"]; kode != "001001" {
@@ -95,6 +95,15 @@ func TestVerify_Success(t *testing.T) {
 	w = do(h, "POST", "/api/verify", `{"nim":"23010000001","kampus":"Universitas Contoh"}`)
 	if w.Code != http.StatusOK || stub.gotCampus != "Universitas Contoh" {
 		t.Fatalf("POST status %d campus %q", w.Code, stub.gotCampus)
+	}
+}
+
+func TestVerify_InactiveIsNotEligible(t *testing.T) {
+	d := activeStudent()
+	d.StatusSaatIni = "Dikeluarkan-2024/2025 Genap"
+	m := decode(t, do(newTestRouter(t, &stubClient{detail: d}), "GET", "/api/verify/23010000001", ""))
+	if m["is_active"] != false || m["eligible"] != false {
+		t.Fatalf("inactive student must not be eligible: %v", m)
 	}
 }
 
