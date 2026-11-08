@@ -10,35 +10,54 @@ import (
 )
 
 const (
-	BaseURL   = "https://pddikti.kemdiktisaintek.go.id/api"
-	UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
-	Origin    = "https://pddikti.kemdiktisaintek.go.id"
-	Referer   = "https://pddikti.kemdiktisaintek.go.id/"
+	DefaultBaseURL = "https://pddikti.kemdiktisaintek.go.id/api"
+	DefaultTimeout = 8 * time.Second
+	UserAgent      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
+	Origin         = "https://pddikti.kemdiktisaintek.go.id"
+	Referer        = "https://pddikti.kemdiktisaintek.go.id/"
 )
 
 type Client struct {
+	baseURL    string
 	httpClient *http.Client
 }
 
-func NewClient(timeout time.Duration) *Client {
-	if timeout == 0 {
-		timeout = 8 * time.Second
+// Option configures a Client.
+type Option func(*Client)
+
+// WithBaseURL points the client at another upstream (used by tests).
+func WithBaseURL(u string) Option {
+	return func(c *Client) { c.baseURL = strings.TrimRight(u, "/") }
+}
+
+// WithTimeout sets the upstream HTTP timeout.
+func WithTimeout(d time.Duration) Option {
+	return func(c *Client) {
+		if d > 0 {
+			c.httpClient.Timeout = d
+		}
 	}
-	return &Client{
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
+}
+
+func NewClient(opts ...Option) *Client {
+	c := &Client{
+		baseURL:    DefaultBaseURL,
+		httpClient: &http.Client{Timeout: DefaultTimeout},
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // StudentSearchResult represents an item returned from /api/pencarian/mhs/{keyword}
 type StudentSearchResult struct {
-	ID         string `json:"id"`
-	Nama       string `json:"nama"`
-	NIM        string `json:"nim"`
-	NamaPT     string `json:"nama_pt"`
+	ID          string `json:"id"`
+	Nama        string `json:"nama"`
+	NIM         string `json:"nim"`
+	NamaPT      string `json:"nama_pt"`
 	SingkatanPT string `json:"sinkatan_pt"`
-	NamaProdi  string `json:"nama_prodi"`
+	NamaProdi   string `json:"nama_prodi"`
 }
 
 type SearchResponse struct {
@@ -90,7 +109,7 @@ func (c *Client) Search(keyword string) ([]StudentSearchResult, error) {
 	cleanKeyword = strings.ReplaceAll(cleanKeyword, "/", " ")
 	encoded := url.PathEscape(cleanKeyword)
 
-	endpoint := fmt.Sprintf("%s/pencarian/mhs/%s", BaseURL, encoded)
+	endpoint := c.baseURL + "/pencarian/mhs/" + encoded
 	req, err := c.prepareRequest(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -122,7 +141,7 @@ func (c *Client) Search(keyword string) ([]StudentSearchResult, error) {
 
 // GetDetail retrieves full student information using encrypted ID
 func (c *Client) GetDetail(id string) (*StudentDetail, error) {
-	endpoint := fmt.Sprintf("%s/detail/mhs/%s", BaseURL, url.PathEscape(id))
+	endpoint := c.baseURL + "/detail/mhs/" + url.PathEscape(id)
 	req, err := c.prepareRequest(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

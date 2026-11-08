@@ -18,7 +18,7 @@ func main() {
 		port = "8090"
 	}
 
-	client := pddikti.NewClient(10 * time.Second)
+	client := pddikti.NewClient(pddikti.WithTimeout(10 * time.Second))
 
 	router := gin.Default()
 
@@ -106,15 +106,15 @@ func main() {
 			"verified":  true,
 			"is_active": isActive,
 			"student": gin.H{
-				"nim":            detail.NIM,
-				"nama":           detail.Nama,
-				"kampus":         detail.NamaPT,
-				"kode_pt":        strings.TrimSpace(detail.KodePT),
-				"prodi":          detail.Prodi,
-				"jenjang":        detail.Jenjang,
-				"jenis_kelamin":  detail.JenisKelamin,
+				"nim":             detail.NIM,
+				"nama":            detail.Nama,
+				"kampus":          detail.NamaPT,
+				"kode_pt":         strings.TrimSpace(detail.KodePT),
+				"prodi":           detail.Prodi,
+				"jenjang":         detail.Jenjang,
+				"jenis_kelamin":   detail.JenisKelamin,
 				"status_akademik": detail.StatusSaatIni,
-				"tanggal_masuk":  detail.TanggalMasuk,
+				"tanggal_masuk":   detail.TanggalMasuk,
 			},
 		})
 	}
