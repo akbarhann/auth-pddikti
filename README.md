@@ -197,3 +197,7 @@ Semua error memakai bentuk `{"status": "error", "code": "<kode>", "error": "<pes
 
 - Rate limit upstream PDDIKTI berada pada batas 60 request per menit per alamat IP publik
 - Layanan ini diperuntukkan bagi verifikasi alur registrasi/autentikasi pengguna secara bertahap, bukan untuk penarikan data massal (bulk harvesting)
+
+## Lisensi
+
+Dirilis di bawah [MIT License](LICENSE).
