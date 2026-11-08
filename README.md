@@ -1,16 +1,21 @@
 # auth-pddikti
 
-Microservice bridge dan HTTP client Go untuk verifikasi data mahasiswa Indonesia berbasis portal PDDIKTI (Kemdiktisaintek RI).
+Microservice bridge dan HTTP client Go untuk verifikasi identitas dan status aktif mahasiswa Indonesia berbasis PDDIKTI (Kemdiktisaintek RI).
 
-Layanan ini dirancang khusus untuk memvalidasi keaktifan mahasiswa, mengambil identitas akademik resmi (nama lengkap, NIM, perguruan tinggi, program studi, jenjang, status semester), dan melakukan pencarian sivitas akademika secara on-demand tanpa proses penambangan data massal.
+Layanan ini berfungsi sebagai lapisan verifikasi data (student verification / e-KYC layer) yang dirancang untuk melengkapi alur autentikasi aplikasi utama. Sistem memvalidasi keaktifan akademik, menarik identitas resmi (nama lengkap, NIM, perguruan tinggi, program studi, jenjang, status semester), dan menyediakan pencarian sivitas akademika secara on-demand tanpa penambangan data massal.
 
 ## Karakteristik Teknis
 
 - On-demand single lookup: Menghindari beban scraping skala besar dengan mengeksekusi request langsung saat user mendaftar.
+- Role & eligibility verification: Memvalidasi keabsahan status mahasiswa aktif sebelum hak akses atau role diberikan oleh sistem utama.
 - Header compliance: Menyertakan header origin, referer, dan user-agent peramban untuk mencegah blokir HTTP 403 dari WAF upstream.
-- Deterministic match: Pencarian berbasis NIM langsung memetakan satu mahasiswa spesifik secara presisi.
+- Deterministic match: Pencarian berbasis NIM memetakan satu mahasiswa spesifik secara presisi.
 - Cross-origin resource sharing: Mendukung integrasi langsung dari antarmuka web maupun mobile.
 - Cakupan nasional: Berlaku untuk seluruh perguruan tinggi negeri, swasta, dan politeknik di Indonesia.
+
+## Catatan Arsitektur
+
+Layanan ini melakukan verifikasi data terhadap pangkalan data nasional secara read-only. Untuk menegakkan kepemilikan akun (identity ownership) secara mutlak, layanan ini direkomendasikan untuk dipasangkan bersama mekanisme autentikasi utama seperti Google Workspace OAuth institusi (`@kampus.ac.id`) atau verifikasi email kampus.
 
 ## Persyaratan
 
